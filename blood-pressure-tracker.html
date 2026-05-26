@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>혈압 관리 다이어리</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --ink: #1a1f2e;
+    --paper: #f5f2ed;
+    --card: #ffffff;
+    --accent: #c0392b;
+    --accent-soft: #e8d5d3;
+    --teal: #1a6b7a;
+    --teal-soft: #d4eaed;
+    --gold: #b8960c;
+    --gold-soft: #f5edcc;
+    --border: #ddd8d0;
+    --muted: #8a8478;
+    --sys-color: #c0392b;
+    --dia-color: #1a6b7a;
+    --pulse-color: #b8960c;
+    --green: #27ae60;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Noto Sans KR', sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    min-height: 100vh;
+  }
+
+  /* ── PRINT ── */
+  @media print {
+    body { background: white; }
+    .no-print { display: none !important; }
+    .print-only { display: block !important; }
+    .card { box-shadow: none !important; border: 1px solid #ccc !important; }
+    header { background: white !important; color: black !important; }
+    .header-inner { border-bottom: 2px solid #333; }
+    .chart-section, .records-section { display: block !important; page-break-inside: avoid; }
+    canvas { max-height: 260px !important; }
+    #setupOverlay { display: none !important; }
+  }
+  .print-only { display: none; }
+
+  /* ── SETUP OVERLAY ── */
+  #setupOverlay {
+    position: fixed; inset: 0;
+    background: rgba(26,31,46,0.85);
+    backdrop-filter: blur(4px);
+    z-index: 999;
+    display: flex; align-items: center; justify-content: center;
+    padding: 1rem;
+  }
+  .setup-card {
+    background: white;
+    border-radius: 18px;
+    width: 100%; max-width: 520px;
+    overflow: hidden;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.3);
+  }
+  .setup-header {
+    background: var(--ink);
+    color: white;
+    padding: 1.4rem 1.8rem;
+  }
+  .setup-header h2 {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.4rem;
+    margin-bottom: 0.2rem;
+  }
+  .setup-header p { font-size: 0.78rem; opacity: 0.6; }
+  .setup-body { padding: 1.6rem; }
+  .setup-steps {
+    background: var(--paper);
+    border-radius: 10px;
+    padding: 1rem 1.2rem;
+    margin-bottom: 1.2rem;
+    font-size: 0.8rem;
+    line-height: 1.8;
+    color: var(--ink);
+    border: 1px solid var(--border);
+  }
+  .setup-steps ol { padding-left: 1.2rem; }
+  .setup-steps code {
+    background: var(--ink);
+    color: #7ecf9e;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.74rem;
+  }
+  .setup-sql {
+    background: var(--ink);
+    color: #a8d8a8;
+    border-radius: 8px;
+    padding: 0.8rem 1rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    line-height: 1.6;
+    margin-bottom: 1.2rem;
+    overflow-x: auto;
+    white-space: pre;
+    position: relative;
+  }
+  .copy-sql-btn {
+    position: absolute; top: 0.5rem; right: 0.5rem;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.7);
+    border-radius: 5px;
+    padding: 0.2rem 0.5rem;
+    font-size: 0.7rem;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .copy-sql-btn:hover { background: rgba(255,255,255,0.2); color: white; }
+  .setup-field { margin-bottom: 0.9rem; }
+  .setup-field label {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 0.35rem;
+  }
+  .setup-field input {
+    width: 100%;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    padding: 0.6rem 0.8rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--ink);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .setup-field input:focus { border-color: var(--teal); }
+  .setup-field input::placeholder { color: #bbb; }
+  .btn-connect {
+    width: 100%;
+    background: var(--ink);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 0.85rem;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    transition: opacity 0.2s;
+  }
+  .btn-connect:hover { opacity: 0.85; }
+  .setup-error {
+    background: #fdd; border: 1px solid #fbb;
+    border-radius: 8px; padding: 0.6rem 0.8rem;
+    font-size: 0.8rem; color: #c00;
+    margin-top: 0.8rem; display: none;
+  }
+
+  /* ── HEADER ── */
+  header {
+    background: var(--ink);
+    color: white;
+    padding: 0 2rem;
+    position: sticky; top: 0; z-index: 100;
+    box-shadow: 0 2px 20px rgba(26,31,46,0.3);
+  }
+  .header-inner {
+    max-width: 1100px; margin: 0 auto;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1rem 0;
+  }
+  .logo { display: flex; align-items: baseline; gap: 0.6rem; }
+  .logo-title { font-family: 'DM Serif Display', serif; font-size: 1.6rem; color: white; }
+  .logo-sub { font-size: 0.72rem; color: rgba(255,255,255,0.5); font-weight: 300; letter-spacing: 0.12em; text-transform: uppercase; }
+  .header-actions { display: flex; gap: 0.6rem; align-items: center; }
+  .btn-ghost {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: rgba(255,255,255,0.85);
+    padding: 0.45rem 1rem;
+    border-radius: 6px; font-size: 0.82rem; cursor: pointer;
+    font-family: inherit; transition: all 0.2s;
+    display: flex; align-items: center; gap: 0.4rem;
+  }
+  .btn-ghost:hover { background: rgba(255,255,255,0.16); color: white; }
+
+  /* ── SYNC STATUS ── */
+  .sync-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    display: inline-block; margin-right: 0.3rem;
+    transition: background 0.3s;
+  }
+  .sync-dot.connected { background: #27ae60; box-shadow: 0 0 0 2px rgba(39,174,96,0.3); }
+  .sync-dot.connecting { background: #f39c12; animation: pulse-dot 1s infinite; }
+  .sync-dot.error { background: #e74c3c; }
+  @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .sync-label { font-size: 0.75rem; color: rgba(255,255,255,0.6); }
+
+  /* ── MAIN ── */
+  main { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+
+  .today-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 1.5rem; flex-wrap: wrap; gap: 0.5rem;
+  }
+  .today-date { font-family: 'DM Serif Display', serif; font-size: 1.2rem; color: var(--muted); }
+  .status-badge {
+    padding: 0.3rem 0.9rem; border-radius: 20px;
+    font-size: 0.78rem; font-weight: 700; letter-spacing: 0.05em;
+  }
+  .status-normal { background: #d4edda; color: #155724; }
+  .status-elevated { background: #fff3cd; color: #856404; }
+  .status-stage1 { background: #ffe0cc; color: #7d3900; }
+  .status-stage2 { background: #fdd; color: #7d0000; }
+  .status-crisis { background: #cc0000; color: white; }
+  .status-unknown { background: var(--border); color: var(--muted); }
+
+  .top-grid {
+    display: grid; grid-template-columns: 380px 1fr;
+    gap: 1.5rem; margin-bottom: 1.5rem;
+  }
+  @media (max-width: 800px) { .top-grid { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--card); border-radius: 14px;
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.05); overflow: hidden;
+  }
+  .card-header {
+    padding: 1rem 1.4rem 0.6rem; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .card-title { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  .card-body { padding: 1.4rem; }
+
+  .bp-inputs { display: flex; gap: 0.8rem; margin-bottom: 1rem; }
+  .bp-field { flex: 1; text-align: center; }
+  .bp-field label { display: block; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.4rem; }
+  .bp-field.sys label { color: var(--sys-color); }
+  .bp-field.dia label { color: var(--dia-color); }
+  .bp-field.pulse label { color: var(--pulse-color); }
+  .bp-input {
+    width: 100%; border: 2px solid var(--border); border-radius: 10px;
+    font-family: 'JetBrains Mono', monospace; font-size: 2rem; font-weight: 600;
+    text-align: center; padding: 0.5rem 0.2rem; outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s; color: var(--ink);
+    -moz-appearance: textfield; appearance: textfield;
+  }
+  .bp-input::-webkit-outer-spin-button, .bp-input::-webkit-inner-spin-button { -webkit-appearance: none; }
+  .bp-field.sys .bp-input:focus { border-color: var(--sys-color); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .bp-field.dia .bp-input:focus { border-color: var(--dia-color); box-shadow: 0 0 0 3px var(--teal-soft); }
+  .bp-field.pulse .bp-input:focus { border-color: var(--pulse-color); box-shadow: 0 0 0 3px var(--gold-soft); }
+  .bp-unit { font-size: 0.68rem; color: var(--muted); margin-top: 0.25rem; }
+  .divider-slash { align-self: center; font-family: 'DM Serif Display', serif; font-size: 2.2rem; color: var(--border); margin-top: 1rem; flex-shrink: 0; }
+
+  .datetime-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; }
+  .datetime-input {
+    flex: 1; border: 1px solid var(--border); border-radius: 8px;
+    padding: 0.55rem 0.8rem; font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem; color: var(--ink); background: var(--paper); outline: none;
+  }
+  .datetime-input:focus { border-color: var(--teal); }
+  .btn-now {
+    background: var(--ink); color: white; border: none; border-radius: 8px;
+    padding: 0.55rem 0.8rem; font-size: 0.75rem; cursor: pointer;
+    font-family: inherit; font-weight: 500; white-space: nowrap; transition: opacity 0.2s;
+  }
+  .btn-now:hover { opacity: 0.8; }
+  .note-input {
+    width: 100%; border: 1px solid var(--border); border-radius: 8px;
+    padding: 0.6rem 0.8rem; font-family: inherit; font-size: 0.82rem;
+    color: var(--ink); background: var(--paper); outline: none; resize: none;
+    height: 52px; margin-bottom: 1rem; transition: border-color 0.2s;
+  }
+  .note-input:focus { border-color: var(--teal); }
+
+  .btn-record {
+    width: 100%; background: var(--ink); color: white; border: none;
+    border-radius: 10px; padding: 0.85rem; font-size: 0.92rem; font-weight: 700;
+    letter-spacing: 0.04em; cursor: pointer; font-family: inherit;
+    transition: transform 0.15s, opacity 0.2s;
+    display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+  }
+  .btn-record:hover { opacity: 0.88; transform: translateY(-1px); }
+  .btn-record:active { transform: translateY(0); }
+  .btn-record:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  .stats-mini { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.8rem; margin-top: 1rem; }
+  .stat-item { background: var(--paper); border-radius: 10px; padding: 0.8rem; text-align: center; border: 1px solid var(--border); }
+  .stat-label { font-size: 0.64rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.3rem; }
+  .stat-val { font-family: 'JetBrains Mono', monospace; font-size: 1.4rem; font-weight: 600; line-height: 1; }
+  .stat-sub { font-size: 0.62rem; color: var(--muted); margin-top: 0.2rem; }
+
+  .chart-wrap { position: relative; height: 280px; padding: 0.5rem 0; }
+
+  .ref-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
+  .ref-item { padding: 0.6rem 0.8rem; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; }
+  .ref-label { font-weight: 500; }
+  .ref-range { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--muted); }
+
+  .records-section { margin-top: 1.5rem; }
+  .filter-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .filter-btn {
+    background: var(--paper); border: 1px solid var(--border); border-radius: 6px;
+    padding: 0.35rem 0.75rem; font-size: 0.75rem; cursor: pointer;
+    font-family: inherit; color: var(--muted); transition: all 0.2s;
+  }
+  .filter-btn.active { background: var(--ink); color: white; border-color: var(--ink); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  thead th {
+    background: var(--paper); padding: 0.6rem 0.8rem; text-align: left;
+    font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--muted); border-bottom: 2px solid var(--border);
+    position: sticky; top: 0; z-index: 1;
+  }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background 0.15s; }
+  tbody tr:hover { background: var(--paper); }
+  tbody td { padding: 0.7rem 0.8rem; vertical-align: middle; }
+  .td-mono { font-family: 'JetBrains Mono', monospace; font-weight: 600; }
+  .td-sys { color: var(--sys-color); }
+  .td-dia { color: var(--dia-color); }
+  .td-pulse { color: var(--pulse-color); }
+  .td-date { color: var(--muted); font-size: 0.78rem; }
+  .td-note { color: var(--muted); font-style: italic; font-size: 0.8rem; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .td-del { background: none; border: none; cursor: pointer; color: var(--border); font-size: 1rem; padding: 0.2rem 0.4rem; border-radius: 4px; transition: color 0.2s; }
+  .td-del:hover { color: var(--accent); }
+
+  .empty-state { text-align: center; padding: 3rem 1rem; color: var(--muted); }
+  .empty-state-icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+  .empty-state p { font-size: 0.88rem; }
+
+  .table-scroll { max-height: 380px; overflow-y: auto; }
+
+  .toast {
+    position: fixed; bottom: 2rem; right: 2rem;
+    background: var(--ink); color: white;
+    padding: 0.8rem 1.2rem; border-radius: 10px;
+    font-size: 0.85rem; font-weight: 500; z-index: 9999;
+    transform: translateY(20px); opacity: 0;
+    transition: all 0.3s ease; pointer-events: none;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+
+  /* loading spinner */
+  .spinner {
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: white; border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media print {
+    .records-section .card-body { max-height: none !important; overflow: visible !important; }
+    .td-del { display: none; }
+    .table-scroll { max-height: none !important; overflow: visible !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── SETUP OVERLAY ── -->
+<div id="setupOverlay">
+  <div class="setup-card">
+    <div class="setup-header">
+      <h2>⚙️ Supabase 연결 설정</h2>
+      <p>처음 한 번만 설정하면 모든 기기에서 데이터가 동기화됩니다</p>
+    </div>
+    <div class="setup-body">
+      <div id="fileProtocolWarning" style="display:none;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:0.7rem 1rem;margin-bottom:1rem;font-size:0.8rem;color:#856404;">
+        ⚠️ <strong>file://로 열면 실시간 동기화가 안 됩니다.</strong><br>
+        아래 중 하나로 실행해주세요:<br>
+        &nbsp;• VS Code → <strong>Live Server</strong> 확장 설치 후 우클릭 → Open with Live Server<br>
+        &nbsp;• 또는 GitHub Pages / 웹호스팅에 파일 업로드
+      </div>
+      <div class="setup-steps">
+        <ol>
+          <li><strong>supabase.com</strong> → 프로젝트 선택 → <strong>SQL Editor</strong></li>
+          <li>아래 SQL을 복사해서 실행하세요</li>
+          <li>Settings → API 에서 <strong>URL</strong>과 <strong>anon key</strong> 복사</li>
+        </ol>
+      </div>
+
+      <div class="setup-sql" id="sqlBlock">create table blood_pressure (
+  id bigint generated always as identity primary key,
+  sys integer not null,
+  dia integer not null,
+  pulse integer,
+  recorded_at timestamptz not null,
+  note text default '',
+  created_at timestamptz default now()
+);
+
+alter table blood_pressure enable row level security;
+create policy "public_access" on blood_pressure
+  for all using (true) with check (true);<button class="copy-sql-btn" onclick="copySql()">복사</button></div>
+
+      <div class="setup-field">
+        <label>Supabase Project URL</label>
+        <input type="text" id="sbUrl" placeholder="https://xxxxxxxxxxx.supabase.co">
+      </div>
+      <div class="setup-field">
+        <label>Supabase Anon Key</label>
+        <input type="text" id="sbKey" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
+      </div>
+      <button class="btn-connect" onclick="connectSupabase()">🔗 연결하기</button>
+      <div class="setup-error" id="setupError"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── PRINT HEADER ── -->
+<div class="print-only" style="padding:1.5rem 2rem 0.5rem; border-bottom:2px solid #333; margin-bottom:1rem;">
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <div>
+      <div style="font-family:'DM Serif Display',serif;font-size:1.8rem;">혈압 관리 리포트</div>
+      <div style="font-size:0.8rem;color:#666;margin-top:0.2rem;">출력일: <span id="printDate"></span></div>
+    </div>
+    <div id="printSummary" style="text-align:right;font-size:0.85rem;"></div>
+  </div>
+</div>
+
+<header class="no-print">
+  <div class="header-inner">
+    <div class="logo">
+      <span class="logo-title">❤️ 혈압 다이어리</span>
+      <span class="logo-sub">Blood Pressure Tracker</span>
+    </div>
+    <div class="header-actions">
+      <span id="syncStatus">
+        <span class="sync-dot connecting"></span>
+        <span class="sync-label">연결 중...</span>
+      </span>
+      <button class="btn-ghost" onclick="exportCSV()">📥 CSV</button>
+      <button class="btn-ghost" onclick="printReport()">🖨 인쇄</button>
+      <button class="btn-ghost" onclick="resetSetup()" title="연결 설정 변경">⚙️</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="today-bar">
+    <div class="today-date" id="todayLabel"></div>
+    <span class="status-badge status-unknown" id="lastStatusBadge">기록 없음</span>
+  </div>
+
+  <div class="top-grid">
+    <!-- INPUT -->
+    <div class="card no-print">
+      <div class="card-header"><span class="card-title">혈압 기록</span></div>
+      <div class="card-body">
+        <div class="bp-inputs">
+          <div class="bp-field sys">
+            <label>수축기</label>
+            <input type="number" class="bp-input" id="sys" placeholder="120" min="60" max="260">
+            <div class="bp-unit">mmHg</div>
+          </div>
+          <div class="divider-slash">/</div>
+          <div class="bp-field dia">
+            <label>이완기</label>
+            <input type="number" class="bp-input" id="dia" placeholder="80" min="40" max="180">
+            <div class="bp-unit">mmHg</div>
+          </div>
+          <div class="divider-slash" style="color:var(--border);font-size:1.4rem;margin-top:1.2rem;">·</div>
+          <div class="bp-field pulse">
+            <label>맥박</label>
+            <input type="number" class="bp-input" id="pulse" placeholder="72" min="30" max="200">
+            <div class="bp-unit">bpm</div>
+          </div>
+        </div>
+        <div class="datetime-row">
+          <input type="datetime-local" class="datetime-input" id="recordTime">
+          <button class="btn-now" onclick="setNow()">지금</button>
+        </div>
+        <textarea class="note-input" id="note" placeholder="메모 (복약 여부, 상태 등)"></textarea>
+        <button class="btn-record" id="addBtn" onclick="addRecord()">
+          <span>+ 기록 추가</span>
+        </button>
+        <div class="stats-mini">
+          <div class="stat-item">
+            <div class="stat-label">평균 수축기</div>
+            <div class="stat-val td-sys" id="avgSys">—</div>
+            <div class="stat-sub">최근 14일</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">평균 이완기</div>
+            <div class="stat-val td-dia" id="avgDia">—</div>
+            <div class="stat-sub">최근 14일</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">평균 맥박</div>
+            <div class="stat-val td-pulse" id="avgPulse">—</div>
+            <div class="stat-sub">최근 14일</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CHART -->
+    <div class="card chart-section">
+      <div class="card-header">
+        <span class="card-title">혈압 추이 그래프</span>
+        <div class="filter-row no-print" id="chartFilter">
+          <button class="filter-btn active" onclick="setChartRange(7,this)">7일</button>
+          <button class="filter-btn" onclick="setChartRange(14,this)">14일</button>
+          <button class="filter-btn" onclick="setChartRange(30,this)">30일</button>
+          <button class="filter-btn" onclick="setChartRange(0,this)">전체</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="chart-wrap"><canvas id="bpChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- REFERENCE -->
+  <div class="card no-print" style="margin-bottom:1.5rem;">
+    <div class="card-header"><span class="card-title">혈압 분류 기준 (AHA 기준)</span></div>
+    <div class="card-body">
+      <div class="ref-grid">
+        <div class="ref-item" style="background:#d4edda;"><span class="ref-label">✅ 정상</span><span class="ref-range">&lt;120 / &lt;80</span></div>
+        <div class="ref-item" style="background:#fff3cd;"><span class="ref-label">⚠️ 주의 (상승)</span><span class="ref-range">120–129 / &lt;80</span></div>
+        <div class="ref-item" style="background:#ffe0cc;"><span class="ref-label">🔶 고혈압 1기</span><span class="ref-range">130–139 / 80–89</span></div>
+        <div class="ref-item" style="background:#fdd;"><span class="ref-label">🔴 고혈압 2기</span><span class="ref-range">≥140 / ≥90</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RECORDS -->
+  <div class="card records-section">
+    <div class="card-header">
+      <span class="card-title">기록 목록</span>
+      <div class="filter-row no-print" id="tableFilter">
+        <button class="filter-btn active" onclick="setTableFilter('all',this)">전체</button>
+        <button class="filter-btn" onclick="setTableFilter('normal',this)">정상</button>
+        <button class="filter-btn" onclick="setTableFilter('elevated',this)">주의</button>
+        <button class="filter-btn" onclick="setTableFilter('stage1',this)">1기</button>
+        <button class="filter-btn" onclick="setTableFilter('stage2',this)">2기</button>
+      </div>
+    </div>
+    <div class="card-body" style="padding:0;">
+      <div class="table-scroll" id="tableScroll">
+        <table>
+          <thead>
+            <tr>
+              <th>날짜 / 시간</th>
+              <th>수축기</th>
+              <th>이완기</th>
+              <th>맥박</th>
+              <th>상태</th>
+              <th>메모</th>
+              <th class="no-print"></th>
+            </tr>
+          </thead>
+          <tbody id="recordsTbody"></tbody>
+        </table>
+        <div class="empty-state" id="emptyState">
+          <div class="empty-state-icon">📋</div>
+          <p>아직 기록이 없습니다.<br>위에서 혈압을 입력해 주세요.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ════════════════════════════════
+   STATE
+════════════════════════════════ */
+let sbClient = null;
+let records = [];
+let chartRange = 7;
+let tableFilter = 'all';
+let bpChart = null;
+let realtimeSub = null;
+
+/* ════════════════════════════════
+   INIT
+════════════════════════════════ */
+window.addEventListener('load', () => {
+
+  // Detect file:// protocol
+  if (window.location.protocol === 'file:') {
+    document.getElementById('fileProtocolWarning').style.display = 'block';
+  }
+
+  setNow();
+  updateTodayLabel();
+
+  const url = localStorage.getItem('sb_url');
+  const key = localStorage.getItem('sb_key');
+  if (url && key) {
+    document.getElementById('setupOverlay').style.display = 'none';
+    initSupabase(url, key);
+  }
+});
+
+/* ════════════════════════════════
+   SUPABASE SETUP
+════════════════════════════════ */
+async function connectSupabase() {
+  const url = document.getElementById('sbUrl').value.trim();
+  const key = document.getElementById('sbKey').value.trim();
+  const errEl = document.getElementById('setupError');
+  errEl.style.display = 'none';
+
+  if (!url || !key) { showSetupError('URL과 Anon Key를 모두 입력해주세요.'); return; }
+  if (!url.startsWith('https://')) { showSetupError('URL은 https://로 시작해야 합니다.'); return; }
+
+  document.querySelector('.btn-connect').innerHTML = '<span class="spinner"></span> 연결 중...';
+  document.querySelector('.btn-connect').disabled = true;
+
+  try {
+    const client = window.supabase.createClient(url, key);
+    // test connection
+    const { error } = await client.from('blood_pressure').select('id').limit(1);
+    if (error) throw error;
+
+    localStorage.setItem('sb_url', url);
+    localStorage.setItem('sb_key', key);
+    document.getElementById('setupOverlay').style.display = 'none';
+    initSupabase(url, key);
+  } catch(e) {
+    showSetupError('연결 실패: ' + (e.message || '테이블이 없거나 키가 잘못되었습니다.'));
+    document.querySelector('.btn-connect').innerHTML = '🔗 연결하기';
+    document.querySelector('.btn-connect').disabled = false;
+  }
+}
+
+function showSetupError(msg) {
+  const el = document.getElementById('setupError');
+  el.textContent = msg; el.style.display = 'block';
+}
+
+function resetSetup() {
+  if (!confirm('연결 설정을 초기화하고 다시 설정하시겠습니까?')) return;
+  if (realtimeSub) sbClient.removeChannel(realtimeSub);
+  localStorage.removeItem('sb_url');
+  localStorage.removeItem('sb_key');
+  location.reload();
+}
+
+function copySql() {
+  const sql = `create table blood_pressure (
+  id bigint generated always as identity primary key,
+  sys integer not null,
+  dia integer not null,
+  pulse integer,
+  recorded_at timestamptz not null,
+  note text default '',
+  created_at timestamptz default now()
+);
+
+alter table blood_pressure enable row level security;
+create policy "public_access" on blood_pressure
+  for all using (true) with check (true);`;
+  navigator.clipboard.writeText(sql).then(() => {
+    document.querySelector('.copy-sql-btn').textContent = '✅ 복사됨';
+    setTimeout(() => document.querySelector('.copy-sql-btn').textContent = '복사', 2000);
+  });
+}
+
+/* ════════════════════════════════
+   INIT SUPABASE
+════════════════════════════════ */
+async function initSupabase(url, key) {
+  setSyncStatus('connecting');
+  sbClient = window.supabase.createClient(url, key);
+
+  await loadRecords();
+  subscribeRealtime();
+}
+
+async function loadRecords() {
+  try {
+    const { data, error } = await sbClient
+      .from('blood_pressure')
+      .select('*')
+      .order('recorded_at', { ascending: false });
+    if (error) throw error;
+    records = data.map(row => ({
+      id: row.id,
+      sys: row.sys,
+      dia: row.dia,
+      pulse: row.pulse,
+      time: row.recorded_at.slice(0,16),
+      note: row.note || ''
+    }));
+    renderAll();
+    setSyncStatus('connected');
+  } catch(e) {
+    console.error(e);
+    setSyncStatus('error');
+    showToast('⚠️ 데이터 로드 실패: ' + e.message);
+  }
+}
+
+function subscribeRealtime() {
+  realtimeSub = sbClient
+    .channel('bp-changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'blood_pressure' },
+      async (payload) => {
+        if (payload.eventType === 'INSERT') {
+          const r = payload.new;
+          // avoid duplicate from own insert
+          if (!records.find(x => x.id === r.id)) {
+            records.unshift({ id:r.id, sys:r.sys, dia:r.dia, pulse:r.pulse, time:r.recorded_at.slice(0,16), note:r.note||'' });
+            renderAll();
+            showToast('🔄 다른 기기에서 새 기록이 추가됐습니다');
+          }
+        } else if (payload.eventType === 'DELETE') {
+          records = records.filter(x => x.id !== payload.old.id);
+          renderAll();
+        }
+      }
+    )
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') setSyncStatus('connected');
+    });
+}
+
+function setSyncStatus(state) {
+  const dot = document.querySelector('.sync-dot');
+  const label = document.querySelector('.sync-label');
+  if (!dot) return;
+  dot.className = 'sync-dot ' + state;
+  const map = { connected:'실시간 동기화 중', connecting:'연결 중...', error:'연결 오류' };
+  label.textContent = map[state] || state;
+}
+
+/* ════════════════════════════════
+   CLASSIFY
+════════════════════════════════ */
+function classify(sys, dia) {
+  if (sys >= 180 || dia >= 120) return { key:'crisis',   label:'고혈압 위기', cls:'status-crisis' };
+  if (sys >= 140 || dia >= 90)  return { key:'stage2',   label:'고혈압 2기',  cls:'status-stage2' };
+  if (sys >= 130 || dia >= 80)  return { key:'stage1',   label:'고혈압 1기',  cls:'status-stage1' };
+  if (sys >= 120 && dia < 80)   return { key:'elevated', label:'주의 (상승)', cls:'status-elevated' };
+  return { key:'normal', label:'정상', cls:'status-normal' };
+}
+
+/* ════════════════════════════════
+   ADD RECORD
+════════════════════════════════ */
+async function addRecord() {
+  if (!sbClient) { showToast('⚠️ Supabase가 연결되지 않았습니다'); return; }
+
+  const sys   = parseInt(document.getElementById('sys').value);
+  const dia   = parseInt(document.getElementById('dia').value);
+  const pulse = parseInt(document.getElementById('pulse').value) || null;
+  const time  = document.getElementById('recordTime').value;
+  const note  = document.getElementById('note').value.trim();
+
+  if (!sys || !dia) { showToast('수축기와 이완기를 입력해주세요.'); return; }
+  if (sys < 60 || sys > 260 || dia < 40 || dia > 180) { showToast('유효한 혈압 수치를 입력해주세요.'); return; }
+
+  const btn = document.getElementById('addBtn');
+  btn.innerHTML = '<span class="spinner"></span>';
+  btn.disabled = true;
+
+  try {
+    const recorded_at = time
+      ? new Date(time).toISOString()
+      : new Date().toISOString();
+
+    const { data, error } = await sbClient
+      .from('blood_pressure')
+      .insert({ sys, dia, pulse, recorded_at, note })
+      .select()
+      .single();
+    if (error) throw error;
+
+    records.unshift({ id:data.id, sys, dia, pulse, time: data.recorded_at.slice(0,16), note });
+    renderAll();
+
+    document.getElementById('sys').value = '';
+    document.getElementById('dia').value = '';
+    document.getElementById('pulse').value = '';
+    document.getElementById('note').value = '';
+    setNow();
+    showToast('✅ 기록이 저장되었습니다!');
+  } catch(e) {
+    showToast('❌ 저장 실패: ' + e.message);
+  } finally {
+    btn.innerHTML = '<span>+ 기록 추가</span>';
+    btn.disabled = false;
+  }
+}
+
+/* ════════════════════════════════
+   DELETE
+════════════════════════════════ */
+async function deleteRecord(id) {
+  if (!confirm('이 기록을 삭제하시겠습니까?')) return;
+  try {
+    const { error } = await sbClient.from('blood_pressure').delete().eq('id', id);
+    if (error) throw error;
+    records = records.filter(r => r.id !== id);
+    renderAll();
+    showToast('🗑 기록이 삭제되었습니다.');
+  } catch(e) {
+    showToast('❌ 삭제 실패: ' + e.message);
+  }
+}
+
+/* ════════════════════════════════
+   RENDER
+════════════════════════════════ */
+function renderAll() {
+  renderTable();
+  renderChart();
+  renderStats();
+  renderLastStatus();
+}
+
+function renderLastStatus() {
+  const badge = document.getElementById('lastStatusBadge');
+  if (!records.length) { badge.textContent='기록 없음'; badge.className='status-badge status-unknown'; return; }
+  const last = records[0];
+  const c = classify(last.sys, last.dia);
+  badge.textContent = `최근: ${c.label} (${last.sys}/${last.dia})`;
+  badge.className = `status-badge ${c.cls}`;
+}
+
+function renderStats() {
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-14);
+  const recent = records.filter(r => new Date(r.time) >= cutoff);
+  const avg = arr => Math.round(arr.reduce((a,b)=>a+b,0)/arr.length);
+  if (!recent.length) {
+    ['avgSys','avgDia','avgPulse'].forEach(id => document.getElementById(id).textContent='—'); return;
+  }
+  document.getElementById('avgSys').textContent = avg(recent.map(r=>r.sys));
+  document.getElementById('avgDia').textContent = avg(recent.map(r=>r.dia));
+  const wp = recent.filter(r=>r.pulse);
+  document.getElementById('avgPulse').textContent = wp.length ? avg(wp.map(r=>r.pulse)) : '—';
+  document.getElementById('printSummary').innerHTML =
+    `총 기록: <strong>${records.length}건</strong><br>` +
+    `최근 14일 평균: <strong>${avg(recent.map(r=>r.sys))}/${avg(recent.map(r=>r.dia))} mmHg</strong>`;
+}
+
+function setTableFilter(f,btn) {
+  tableFilter=f;
+  document.querySelectorAll('#tableFilter .filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active'); renderTable();
+}
+
+function renderTable() {
+  const tbody = document.getElementById('recordsTbody');
+  const empty = document.getElementById('emptyState');
+  const filtered = tableFilter==='all' ? records : records.filter(r=>classify(r.sys,r.dia).key===tableFilter);
+  if (!filtered.length) { tbody.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display='none';
+  tbody.innerHTML = filtered.map(r => {
+    const c=classify(r.sys,r.dia);
+    const dt=new Date(r.time);
+    return `<tr>
+      <td class="td-date">${dt.toLocaleDateString('ko-KR',{month:'2-digit',day:'2-digit',weekday:'short'})} ${dt.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})}</td>
+      <td class="td-mono td-sys">${r.sys}</td>
+      <td class="td-mono td-dia">${r.dia}</td>
+      <td class="td-mono td-pulse">${r.pulse||'—'}</td>
+      <td><span class="status-badge ${c.cls}">${c.label}</span></td>
+      <td class="td-note" title="${r.note}">${r.note||''}</td>
+      <td class="no-print"><button class="td-del" onclick="deleteRecord(${r.id})">✕</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function setChartRange(days,btn) {
+  chartRange=days;
+  document.querySelectorAll('#chartFilter .filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active'); renderChart();
+}
+
+function renderChart() {
+  const sorted = [...records].sort((a,b)=>new Date(a.time)-new Date(b.time));
+  let data = chartRange>0
+    ? sorted.filter(r=>{ const c=new Date(); c.setDate(c.getDate()-chartRange); return new Date(r.time)>=c; })
+    : sorted;
+
+  const labels = data.map(r=>{
+    const dt=new Date(r.time);
+    return dt.toLocaleDateString('ko-KR',{month:'numeric',day:'numeric'})+'\n'+
+           dt.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
+  });
+
+  const ctx = document.getElementById('bpChart').getContext('2d');
+  if (bpChart) bpChart.destroy();
+  bpChart = new Chart(ctx, {
+    type:'line',
+    data:{
+      labels,
+      datasets:[
+        { label:'수축기 (mmHg)', data:data.map(r=>r.sys), borderColor:'#c0392b', backgroundColor:'rgba(192,57,43,0.08)', borderWidth:2.5, pointBackgroundColor:'#c0392b', pointRadius:4, pointHoverRadius:6, tension:0.3, fill:true },
+        { label:'이완기 (mmHg)', data:data.map(r=>r.dia), borderColor:'#1a6b7a', backgroundColor:'rgba(26,107,122,0.06)', borderWidth:2.5, pointBackgroundColor:'#1a6b7a', pointRadius:4, pointHoverRadius:6, tension:0.3, fill:true },
+        { label:'맥박 (bpm)', data:data.map(r=>r.pulse||null), borderColor:'#b8960c', backgroundColor:'transparent', borderWidth:1.5, borderDash:[4,3], pointBackgroundColor:'#b8960c', pointRadius:3, tension:0.3, fill:false, spanGaps:true }
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{ mode:'index', intersect:false },
+      plugins:{
+        legend:{ position:'bottom', labels:{ font:{family:"'Noto Sans KR'",size:11}, padding:16, boxWidth:14 } },
+        tooltip:{ backgroundColor:'#1a1f2e', titleFont:{family:"'Noto Sans KR'",size:11}, bodyFont:{family:"'JetBrains Mono'",size:12}, padding:12,
+          callbacks:{ label:ctx=>{ if(ctx.parsed.y===null)return null; return `  ${ctx.dataset.label.split(' ')[0]}: ${ctx.parsed.y}${ctx.datasetIndex<2?' mmHg':' bpm'}`; } }
+        }
+      },
+      scales:{
+        x:{ grid:{color:'rgba(0,0,0,0.04)'}, ticks:{font:{family:"'Noto Sans KR'",size:10},color:'#8a8478',maxTicksLimit:10} },
+        y:{ grid:{color:'rgba(0,0,0,0.04)'}, ticks:{font:{family:"'JetBrains Mono'",size:10},color:'#8a8478'}, suggestedMin:50, suggestedMax:180 }
+      }
+    }
+  });
+
+  // Reference lines plugin
+  bpChart.config.plugins = [{
+    id:'refLines',
+    afterDraw(chart){
+      const {ctx,chartArea,scales}=chart;
+      const y120=scales.y.getPixelForValue(120), y140=scales.y.getPixelForValue(140);
+      ctx.save();
+      ctx.setLineDash([5,4]);
+      ctx.strokeStyle='rgba(133,187,101,0.5)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(chartArea.left,y120); ctx.lineTo(chartArea.right,y120); ctx.stroke();
+      ctx.strokeStyle='rgba(192,57,43,0.3)';
+      ctx.beginPath(); ctx.moveTo(chartArea.left,y140); ctx.lineTo(chartArea.right,y140); ctx.stroke();
+      ctx.restore();
+    }
+  }];
+  bpChart.update();
+}
+
+/* ════════════════════════════════
+   UTILS
+════════════════════════════════ */
+function setNow() {
+  const now = new Date();
+  document.getElementById('recordTime').value =
+    new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,16);
+}
+
+function updateTodayLabel() {
+  const now=new Date();
+  const opts={year:'numeric',month:'long',day:'numeric',weekday:'long'};
+  document.getElementById('todayLabel').textContent=now.toLocaleDateString('ko-KR',opts);
+  document.getElementById('printDate').textContent=now.toLocaleDateString('ko-KR',opts);
+}
+
+function exportCSV() {
+  if (!records.length) { showToast('내보낼 기록이 없습니다.'); return; }
+  const rows=[['날짜','시간','수축기(mmHg)','이완기(mmHg)','맥박(bpm)','상태','메모']];
+  [...records].sort((a,b)=>new Date(a.time)-new Date(b.time)).forEach(r=>{
+    const dt=new Date(r.time);
+    rows.push([dt.toLocaleDateString('ko-KR'),dt.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}),r.sys,r.dia,r.pulse||'',classify(r.sys,r.dia).label,r.note||'']);
+  });
+  const csv='\uFEFF'+rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
+  a.download=`혈압기록_${new Date().toLocaleDateString('ko-KR').replace(/\. /g,'-').replace('.','')}.csv`;
+  a.click();
+  showToast('📥 CSV 저장 완료!');
+}
+
+function printReport() {
+  document.getElementById('printDate').textContent=new Date().toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric'});
+  document.getElementById('tableScroll').style.maxHeight='none';
+  window.print();
+  document.getElementById('tableScroll').style.maxHeight='380px';
+}
+
+function showToast(msg) {
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2800);
+}
+
+document.addEventListener('keydown', e=>{
+  if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)) addRecord();
+});
+</script>
+</body>
+</html>
