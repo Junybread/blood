@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>혈압 다이어리 — 로그인</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #1a1f2e;
+  --paper: #f5f2ed;
+  --card: #ffffff;
+  --teal: #1a6b7a;
+  --teal-soft: #d4eaed;
+  --border: #ddd8d0;
+  --muted: #8a8478;
+  --accent: #c0392b;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Noto Sans KR', sans-serif;
+  background: var(--ink);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 배경 장식 */
+body::before {
+  content: '';
+  position: absolute;
+  width: 600px; height: 600px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(192,57,43,0.12) 0%, transparent 70%);
+  top: -200px; right: -200px;
+  pointer-events: none;
+}
+body::after {
+  content: '';
+  position: absolute;
+  width: 400px; height: 400px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(26,107,122,0.1) 0%, transparent 70%);
+  bottom: -150px; left: -100px;
+  pointer-events: none;
+}
+
+/* SETUP 오버레이 */
+.setup-wrap {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 18px;
+  width: 100%; max-width: 460px;
+  padding: 2rem;
+  margin-bottom: 1rem;
+  display: none;
+}
+.setup-wrap.show { display: block; }
+.setup-label {
+  font-size: .68rem; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: rgba(255,255,255,.4);
+  margin-bottom: .4rem; display: block;
+}
+.setup-input {
+  width: 100%; background: rgba(255,255,255,.07);
+  border: 1.5px solid rgba(255,255,255,.12);
+  border-radius: 8px; padding: .65rem .9rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: .8rem; color: rgba(255,255,255,.85);
+  outline: none; transition: border-color .2s;
+  margin-bottom: .8rem;
+}
+.setup-input::placeholder { color: rgba(255,255,255,.25); }
+.setup-input:focus { border-color: var(--teal); }
+.btn-setup {
+  width: 100%; background: var(--teal); color: white;
+  border: none; border-radius: 8px; padding: .75rem;
+  font-size: .88rem; font-weight: 700; cursor: pointer;
+  font-family: inherit; transition: opacity .2s;
+}
+.btn-setup:hover { opacity: .85; }
+.btn-setup:disabled { opacity: .5; cursor: not-allowed; }
+.setup-error {
+  background: rgba(192,57,43,.2); border: 1px solid rgba(192,57,43,.4);
+  border-radius: 8px; padding: .55rem .8rem;
+  font-size: .78rem; color: #f5a09a;
+  margin-top: .7rem; display: none;
+}
+
+/* MAIN CARD */
+.login-card {
+  background: var(--card);
+  border-radius: 24px;
+  width: 100%; max-width: 400px;
+  overflow: hidden;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.5);
+  position: relative;
+  z-index: 1;
+}
+
+.card-top {
+  background: linear-gradient(135deg, #1a1f2e 0%, #2d3548 100%);
+  padding: 2.5rem 2rem 2rem;
+  text-align: center;
+  position: relative;
+}
+.heart-pulse {
+  font-size: 3rem;
+  display: block;
+  margin-bottom: .8rem;
+  animation: heartbeat 1.5s ease-in-out infinite;
+}
+@keyframes heartbeat {
+  0%,100% { transform: scale(1); }
+  15% { transform: scale(1.15); }
+  30% { transform: scale(1); }
+  45% { transform: scale(1.08); }
+  60% { transform: scale(1); }
+}
+.card-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1.8rem; color: white;
+  letter-spacing: -.02em;
+}
+.card-sub {
+  font-size: .78rem; color: rgba(255,255,255,.4);
+  margin-top: .3rem; letter-spacing: .04em;
+}
+
+/* ECG 라인 장식 */
+.ecg-line {
+  display: flex; align-items: center; justify-content: center;
+  margin-top: 1.2rem; opacity: .25;
+}
+.ecg-line svg { width: 200px; height: 30px; }
+
+.card-body { padding: 2rem; }
+
+.field { margin-bottom: 1.2rem; }
+.field-label {
+  display: block; font-size: .7rem; font-weight: 700;
+  letter-spacing: .1em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: .45rem;
+}
+.field-input {
+  width: 100%;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  padding: .8rem 1rem;
+  font-family: 'Noto Sans KR', sans-serif;
+  font-size: .95rem;
+  color: var(--ink);
+  outline: none;
+  transition: border-color .2s, box-shadow .2s;
+  background: var(--paper);
+}
+.field-input:focus {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px var(--teal-soft);
+  background: white;
+}
+.field-input::placeholder { color: #bbb; }
+
+.btn-login {
+  width: 100%;
+  background: var(--ink);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  padding: .95rem;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: transform .15s, opacity .2s, box-shadow .2s;
+  letter-spacing: .02em;
+  box-shadow: 0 4px 16px rgba(26,31,46,.25);
+  margin-top: .4rem;
+}
+.btn-login:hover { opacity: .88; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(26,31,46,.3); }
+.btn-login:active { transform: translateY(0); }
+.btn-login:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+.login-error {
+  background: #fff0ef; border: 1.5px solid #ffccc9;
+  border-radius: 8px; padding: .65rem .9rem;
+  font-size: .82rem; color: var(--accent);
+  margin-top: .9rem; display: none;
+  text-align: center; font-weight: 500;
+}
+
+.card-footer {
+  padding: 1rem 2rem 1.5rem;
+  text-align: center;
+  border-top: 1px solid var(--border);
+}
+.footer-link {
+  font-size: .75rem; color: var(--muted);
+  cursor: pointer; background: none; border: none;
+  font-family: inherit; text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.footer-link:hover { color: var(--ink); }
+
+/* 하단 안내 */
+.bottom-note {
+  color: rgba(255,255,255,.25);
+  font-size: .72rem; margin-top: 1.5rem;
+  text-align: center; z-index: 1; position: relative;
+}
+
+.spinner {
+  display: inline-block; width: 16px; height: 16px;
+  border: 2px solid rgba(255,255,255,.3);
+  border-top-color: white; border-radius: 50%;
+  animation: spin .6s linear infinite; vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* 접속 상태 표시 */
+.conn-badge {
+  position: absolute; top: 1rem; right: 1rem;
+  font-size: .65rem; padding: .2rem .6rem;
+  border-radius: 20px; font-weight: 700;
+  letter-spacing: .04em;
+}
+.conn-badge.ok { background: rgba(39,174,96,.2); color: #7ecb9a; border: 1px solid rgba(39,174,96,.3); }
+.conn-badge.fail { background: rgba(192,57,43,.2); color: #f5a09a; border: 1px solid rgba(192,57,43,.3); }
+.conn-badge.loading { background: rgba(255,255,255,.1); color: rgba(255,255,255,.5); border: 1px solid rgba(255,255,255,.15); }
+</style>
+</head>
+<body>
+
+<!-- SETUP 패널 (숨김 상태로 시작) -->
+<div class="setup-wrap" id="setupWrap">
+  <div style="color:rgba(255,255,255,.7);font-size:.85rem;font-weight:700;margin-bottom:1rem;">⚙️ Supabase 연결 설정</div>
+  <label class="setup-label">Project URL</label>
+  <input type="text" class="setup-input" id="sbUrl" placeholder="https://xxxxxxxxxxx.supabase.co">
+  <label class="setup-label">Anon Key</label>
+  <input type="text" class="setup-input" id="sbKey" placeholder="eyJhbGci...">
+  <button class="btn-setup" onclick="connectSupabase()">🔗 연결하기</button>
+  <div class="setup-error" id="setupError"></div>
+</div>
+
+<!-- LOGIN CARD -->
+<div class="login-card">
+  <div class="card-top">
+    <span class="conn-badge loading" id="connBadge">연결 중...</span>
+    <span class="heart-pulse">❤️</span>
+    <div class="card-title">혈압 다이어리</div>
+    <div class="card-sub">Blood Pressure Tracker</div>
+    <div class="ecg-line">
+      <svg viewBox="0 0 200 30" fill="none" stroke="white" stroke-width="1.5">
+        <polyline points="0,15 30,15 40,5 50,25 60,2 70,28 80,15 120,15 130,8 140,22 150,15 200,15"/>
+      </svg>
+    </div>
+  </div>
+
+  <div class="card-body">
+    <div class="field">
+      <label class="field-label">이름</label>
+      <input type="text" class="field-input" id="loginName" placeholder="홍길동" autocomplete="username">
+    </div>
+    <div class="field">
+      <label class="field-label">비밀번호</label>
+      <input type="password" class="field-input" id="loginPw" placeholder="••••••" autocomplete="current-password">
+    </div>
+    <button class="btn-login" id="loginBtn" onclick="doLogin()">로그인</button>
+    <div class="login-error" id="loginError"></div>
+  </div>
+
+  <div class="card-footer">
+    <button class="footer-link" onclick="toggleSetup()">연결 설정 변경</button>
+  </div>
+</div>
+
+<div class="bottom-note">
+  가족 건강 관리 · 데이터는 안전하게 저장됩니다
+</div>
+
+<script>
+let sbClient = null;
+
+/* ── INIT ── */
+window.addEventListener('load', () => {
+  const url = localStorage.getItem('sb_url');
+  const key = localStorage.getItem('sb_key');
+  if (url && key) {
+    initSupabase(url, key);
+  } else {
+    document.getElementById('setupWrap').classList.add('show');
+    setConnBadge('fail', '미연결');
+  }
+  document.getElementById('loginName').focus();
+});
+
+/* ── SUPABASE ── */
+async function connectSupabase() {
+  const url = document.getElementById('sbUrl').value.trim();
+  const key = document.getElementById('sbKey').value.trim();
+  if (!url || !key) { showSetupErr('URL과 Key를 모두 입력해주세요.'); return; }
+  const btn = document.querySelector('.btn-setup');
+  btn.innerHTML = '<span class="spinner"></span> 연결 중...'; btn.disabled = true;
+  try {
+    const c = window.supabase.createClient(url, key);
+    const { error } = await c.from('bp_users').select('id').limit(1);
+    if (error) throw error;
+    localStorage.setItem('sb_url', url);
+    localStorage.setItem('sb_key', key);
+    document.getElementById('setupWrap').classList.remove('show');
+    initSupabase(url, key);
+  } catch(e) {
+    showSetupErr('연결 실패: ' + (e.message || '설정을 확인해주세요.'));
+    btn.innerHTML = '🔗 연결하기'; btn.disabled = false;
+  }
+}
+
+function initSupabase(url, key) {
+  setConnBadge('loading', '연결 중...');
+  sbClient = window.supabase.createClient(url, key);
+  setConnBadge('ok', '연결됨');
+  document.getElementById('loginBtn').disabled = false;
+}
+
+/* ── LOGIN ── */
+async function doLogin() {
+  if (!sbClient) { showLoginErr('먼저 Supabase에 연결해주세요.'); return; }
+  const name = document.getElementById('loginName').value.trim();
+  const pw   = document.getElementById('loginPw').value;
+  if (!name || !pw) { showLoginErr('이름과 비밀번호를 입력해주세요.'); return; }
+
+  const btn = document.getElementById('loginBtn');
+  btn.innerHTML = '<span class="spinner"></span> 확인 중...'; btn.disabled = true;
+  document.getElementById('loginError').style.display = 'none';
+
+  try {
+    const { data, error } = await sbClient
+      .from('bp_users').select('*')
+      .eq('name', name).eq('password', pw).single();
+    if (error || !data) throw new Error('이름 또는 비밀번호가 올바르지 않습니다.');
+
+    // 세션 저장
+    sessionStorage.setItem('bp_user', JSON.stringify(data));
+
+    // 관리자면 admin.html, 일반이면 blood-pressure-tracker.html
+    if (data.is_admin) {
+      sessionStorage.setItem('bp_admin', JSON.stringify(data));
+      window.location.href = 'admin.html';
+    } else {
+      window.location.href = 'blood-pressure-tracker.html';
+    }
+  } catch(e) {
+    showLoginErr(e.message);
+    btn.innerHTML = '로그인'; btn.disabled = false;
+  }
+}
+
+/* ── UI HELPERS ── */
+function toggleSetup() {
+  document.getElementById('setupWrap').classList.toggle('show');
+}
+
+function setConnBadge(type, text) {
+  const b = document.getElementById('connBadge');
+  b.className = 'conn-badge ' + type;
+  b.textContent = text;
+}
+
+function showSetupErr(m) {
+  const e = document.getElementById('setupError');
+  e.textContent = m; e.style.display = 'block';
+}
+
+function showLoginErr(m) {
+  const e = document.getElementById('loginError');
+  e.textContent = '⚠️ ' + m; e.style.display = 'block';
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+</script>
+</body>
+</html>
